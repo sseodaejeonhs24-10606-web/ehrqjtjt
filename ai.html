@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>버섯 AI 판별기 - 화경버섯 vs 느타리버섯</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- TensorFlow.js and Teachable Machine Image Library -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+    <style>
+        @import url('https://cdn.jsdelivr.net/gh/orioncactus/pretendard/dist/web/static/pretendard.css');
+        body { font-family: 'Pretendard', sans-serif; }
+        .glow-red { box-shadow: 0 0 25px rgba(239, 68, 68, 0.6); }
+        .glow-green { box-shadow: 0 0 25px rgba(34, 197, 94, 0.5); }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col justify-between">
+
+    <!-- Header -->
+    <header class="border-b border-slate-800 bg-slate-900/80 backdrop-blur sticky top-0 z-50">
+        <div class="max-w-4xl mx-auto px-4 py-4 flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <div class="w-10 h-10 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center font-bold text-xl border border-amber-500/30">
+                    <i class="fa-solid font-bold fa-wheat-awn-circle-exclamation"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg text-white leading-tight">버섯 AI 안전 판별기</h1>
+                    <p class="text-xs text-slate-400">화경버섯(독) & 느타리버섯(식용) 구분</p>
+                </div>
+            </div>
+            <button onclick="openSettingsModal()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium flex items-center gap-1.5 transition border border-slate-700">
+                <i class="fa-solid fa-gear text-amber-400"></i>
+                <span>모델 URL 설정</span>
+            </button>
+        </div>
+    </header>
+
+    <main class="max-w-4xl mx-auto px-4 py-6 w-full flex-1">
+        
+        <!-- Safety Alert Banner -->
+        <div class="bg-amber-950/40 border border-amber-600/40 rounded-2xl p-4 mb-6 flex items-start gap-3.5">
+            <i class="fa-solid fa-triangle-exclamation text-amber-400 text-2xl mt-0.5 shrink-0"></i>
+            <div class="text-xs text-amber-200/90 leading-relaxed">
+                <strong class="font-bold text-amber-300 block mb-0.5 text-sm">⚠️ 안전 주의사항</strong>
+                화경버섯은 느타리버섯과 매우 비슷하게 생긴 <strong>치명적인 독버섯</strong>입니다. 본 AI 모델은 참고용일 뿐이며, <strong>야생에서 채취한 버섯은 절대로 함부로 섭취하지 마십시오.</strong>
+            </div>
+        </div>
+
+        <!-- Main Card Wrapper -->
+        <div class="grid grid-cols-1 md:grid-cols-12 gap-6">
+            
+            <!-- Left Panel: Input & Camera -->
+            <div class="md:col-span-6 flex flex-col gap-4">
+                <div class="bg-slate-800/80 border border-slate-700/60 rounded-2xl p-5 shadow-xl">
+                    
+                    <!-- Tab Switchers -->
+                    <div class="flex bg-slate-900/80 p-1 rounded-xl mb-4 text-xs font-semibold">
+                        <button id="tabUploadBtn" onclick="switchTab('upload')" class="flex-1 py-2 rounded-lg bg-slate-800 text-amber-400 transition flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-image"></i> 사진 업로드
+                        </button>
+                        <button id="tabWebcamBtn" onclick="switchTab('webcam')" class="flex-1 py-2 rounded-lg text-slate-400 hover:text-white transition flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-camera"></i> 실시간 카메라
+                        </button>
+                    </div>
+
+                    <!-- Upload Tab Area -->
+                    <div id="uploadArea" class="block">
+                        <label for="imageUpload" class="flex flex-col items-center justify-center w-full h-64 border-2 border-dashed border-slate-600 hover:border-amber-400 rounded-xl cursor-pointer bg-slate-900/50 hover:bg-slate-900 transition relative overflow-hidden group">
+                            <img id="previewImage" class="hidden absolute inset-0 w-full h-full object-contain p-2 bg-slate-950" alt="Preview">
+                            <div id="uploadPlaceholder" class="flex flex-col items-center justify-center pt-5 pb-6 text-center px-4">
+                                <i class="fa-solid fa-cloud-arrow-up text-3xl text-slate-500 mb-3 group-hover:text-amber-400 transition"></i>
+                                <p class="mb-1 text-sm text-slate-300 font-medium">버섯 사진을 클릭하여 업로드</p>
+                                <p class="text-xs text-slate-500">PNG, JPG, JPEG (드래그 가능)</p>
+                            </div>
+                            <input id="imageUpload" type="file" accept="image/*" class="hidden" onchange="handleImageUpload(event)" />
+                        </label>
+                    </div>
+
+                    <!-- Webcam Tab Area -->
+                    <div id="webcamArea" class="hidden flex flex-col items-center">
+                        <div id="webcamContainer" class="w-full h-64 bg-slate-950 rounded-xl border border-slate-700 flex items-center justify-center relative overflow-hidden">
+                            <p class="text-slate-500 text-xs">카메라를 시작하려면 아래 버튼을 누르세요</p>
+                        </div>
+                        <button id="startCamBtn" onclick="setupWebcam()" class="mt-3 w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl transition flex items-center justify-center gap-2">
+                            <i class="fa-solid fa-video"></i> 카메라 켜기 및 실시간 분석
+                        </button>
+                    </div>
+
+                    <!-- Sample Demo Button -->
+                    <div class="mt-4 pt-4 border-t border-slate-700/50 flex justify-between items-center text-xs">
+                        <span class="text-slate-400">샘플 이미지로 테스트:</span>
+                        <div class="flex gap-2">
+                            <button onclick="loadSample('oyster')" class="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 rounded text-slate-200">느타리</button>
+                            <button onclick="loadSample('moonlight')" class="px-2.5 py-1 bg-slate-700 hover:bg-slate-600 rounded text-slate-200">화경버섯</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel: Analysis Results -->
+            <div class="md:col-span-6 flex flex-col gap-4">
+                <div class="bg-slate-800/80 border border-slate-700/60 rounded-2xl p-5 shadow-xl h-full flex flex-col justify-between">
+                    <div>
+                        <div class="flex items-center justify-between mb-4">
+                            <h2 class="text-sm font-bold text-slate-200 flex items-center gap-2">
+                                <i class="fa-solid fa-chart-pie text-amber-400"></i> AI 분석 결과
+                            </h2>
+                            <span id="modelStatusBadge" class="text-[10px] px-2 py-0.5 rounded-full bg-slate-700 text-slate-400">
+                                모델 대기 중
+                            </span>
+                        </div>
+
+                        <!-- Result Card Header -->
+                        <div id="resultHeaderCard" class="p-4 rounded-xl bg-slate-900 border border-slate-700/80 mb-5 text-center">
+                            <div id="resultIcon" class="text-3xl mb-1 text-slate-500">
+                                <i class="fa-solid fa-magnifying-glass-chart"></i>
+                            </div>
+                            <h3 id="resultTitle" class="text-lg font-bold text-slate-300">사진을 등록해주세요</h3>
+                            <p id="resultSubtitle" class="text-xs text-slate-400 mt-0.5">이미지를 업로드하거나 카메라를 작동시키면 확률을 분석합니다.</p>
+                        </div>
+
+                        <!-- Probability Bars -->
+                        <div class="space-y-3" id="probabilityContainer">
+                            <!-- 느타리버섯 Bar -->
+                            <div>
+                                <div class="flex justify-between text-xs font-semibold mb-1">
+                                    <span class="text-emerald-400"><i class="fa-solid fa-leaf mr-1"></i>느타리버섯 (식용)</span>
+                                    <span id="oysterProbText" class="text-slate-400">0%</span>
+                                </div>
+                                <div class="w-full bg-slate-900 rounded-full h-3 overflow-hidden border border-slate-700">
+                                    <div id="oysterBar" class="bg-emerald-500 h-3 rounded-full transition-all duration-500" style="width: 0%"></div>
+                                </div>
+                            </div>
+
+                            <!-- 화경버섯 Bar -->
+                            <div>
+                                <div class="flex justify-between text-xs font-semibold mb-1">
+                                    <span class="text-red-400"><i class="fa-solid fa-skull-crossbones mr-1"></i>화경버섯 (독버섯)</span>
+                                    <span id="moonlightProbText" class="text-slate-400">0%</span>
+                                </div>
+                                <div class="w-full bg-slate-900 rounded-full h-3 overflow-hidden border border-slate-700">
+                                    <div id="moonlightBar" class="bg-red-500 h-3 rounded-full transition-all duration-500" style="width: 0%"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Detailed Warnings & Action Box -->
+                    <div id="detailNoticeBox" class="mt-5 p-3.5 rounded-xl bg-slate-900/80 border border-slate-700/60 text-xs text-slate-300 hidden">
+                        <!-- Dynamic details injected here -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Comparison & Educational Section -->
+        <section class="mt-8 bg-slate-800/40 border border-slate-800 rounded-2xl p-6">
+            <h3 class="text-base font-bold text-amber-400 mb-4 flex items-center gap-2">
+                <i class="fa-solid fa-book-open"></i> 화경버섯 vs 느타리버섯 핵심 구별법
+            </h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                
+                <!-- 느타리버섯 Card -->
+                <div class="bg-emerald-950/20 border border-emerald-800/40 rounded-xl p-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <h4 class="font-bold text-sm text-emerald-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-circle-check"></i> 느타리버섯 (식용)
+                        </h4>
+                        <span class="px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px]">안전 식용</span>
+                    </div>
+                    <ul class="space-y-1.5 text-slate-300 list-disc list-inside">
+                        <li><strong>자루 단면:</strong> 쪼개었을 때 속이 희고 깨끗함 (검은 반점 없음).</li>
+                        <li><strong>야광 현상:</strong> 밤에 어두운 곳에서 빛이 나지 않음.</li>
+                        <li><strong>발생 시기:</strong> 주로 가을철 활엽수 고사목에서 자람.</li>
+                        <li><strong>갓의 색상:</strong> 잿빛, 회갈색에서 성장하며 연해짐.</li>
+                    </ul>
+                </div>
+
+                <!-- 화경버섯 Card -->
+                <div class="bg-red-950/20 border border-red-800/40 rounded-xl p-4">
+                    <div class="flex items-center justify-between mb-2">
+                        <h4 class="font-bold text-sm text-red-400 flex items-center gap-1.5">
+                            <i class="fa-solid fa-triangle-exclamation"></i> 화경버섯 (맹독성)
+                        </h4>
+                        <span class="px-2 py-0.5 rounded bg-red-500/20 text-red-300 text-[10px]">절대 섭취 금지</span>
+                    </div>
+                    <ul class="space-y-1.5 text-slate-300 list-disc list-inside">
+                        <li><strong>자루 기부:</strong> 쪼개면 자루 아래쪽에 <strong>검은색 반점</strong>이 명확함.</li>
+                        <li><strong>야광 현상:</strong> 밤이나 어두운 방에서 <strong>줄름 부위가 야광(빛)</strong>을 발함.</li>
+                        <li><strong>중독 증상:</strong> 복통, 구토, 설사, 오한, 시력 장애, 복부 경련.</li>
+                        <li><strong>특징:</strong> 느타리와 거의 똑같이 생겨 야생버섯 중독 사고 1위.</li>
+                    </ul>
+                </div>
+
+            </div>
+        </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="border-t border-slate-800 bg-slate-950 py-6 mt-10 text-center text-xs text-slate-500">
+        <p>본 서비스는 Teachable Machine AI 기술 기반 이미지 분류 참고용 웹입니다.</p>
+        <p class="mt-1">응급 상황 시: **119** 또는 **응급의료정보센터 1339**로 즉시 연락하세요.</p>
+    </footer>
+
+    <!-- Teachable Machine Model URL Settings Modal -->
+    <div id="settingsModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+        <div class="bg-slate-800 border border-slate-700 rounded-2xl max-w-md w-full p-6 shadow-2xl">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="font-bold text-base text-white flex items-center gap-2">
+                    <i class="fa-solid fa-link text-amber-400"></i> 티처블 머신 URL 설정
+                </h3>
+                <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-white text-lg">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            
+            <p class="text-xs text-slate-300 mb-4 leading-relaxed">
+                티처블 머신에서 모델을 내보낸(Export Model) 후 생성된 <span class="text-amber-400 font-mono">https://teachablemachine.withgoogle.com/models/XXXXXX/</span> 형태의 링크를 붙여넣어 주세요.
+            </p>
+
+            <div class="space-y-3 mb-5">
+                <label class="block text-xs font-semibold text-slate-400">모델 URL 입력</label>
+                <input id="modelUrlInput" type="text" placeholder="https://teachablemachine.withgoogle.com/models/..." 
+                    class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2.5 text-xs text-white focus:outline-none focus:border-amber-400 font-mono" />
+            </div>
+
+            <div class="flex gap-2">
+                <button onclick="saveAndLoadModel()" class="flex-1 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold rounded-xl text-xs transition">
+                    적용 및 모델 로드
+                </button>
+                <button onclick="closeSettingsModal()" class="px-4 py-2.5 bg-slate-700 hover:bg-slate-600 text-slate-300 rounded-xl text-xs font-medium">
+                    취소
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification Message Container -->
+    <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2"></div>
+
+    <script>
+        // Default Model URL variable
+        let MODEL_URL = localStorage.getItem("tm_mushroom_model_url") || "https://teachablemachine.withgoogle.com/models/aHiH0HLzQ/";
+        let model, webcam, maxPredictions;
+        let isWebcamActive = false;
+
+        // On Page Load Initialization
+        window.addEventListener('DOMContentLoaded', () => {
+            if (MODEL_URL) {
+                document.getElementById('modelUrlInput').value = MODEL_URL;
+                loadTeachableModel(MODEL_URL);
+            } else {
+                updateStatusBadge('URL 미설정', 'bg-amber-500/20 text-amber-400 border border-amber-500/30');
+            }
+        });
+
+        function showToast(msg, type = 'info') {
+            const toast = document.createElement('div');
+            toast.className = `px-4 py-3 rounded-xl text-xs font-semibold shadow-lg text-white transition transform duration-300 translate-y-2 opacity-0 flex items-center gap-2 ${
+                type === 'error' ? 'bg-red-600' : type === 'success' ? 'bg-emerald-600' : 'bg-slate-700'
+            }`;
+            toast.innerHTML = `<i class="fa-solid fa-circle-info"></i> ${msg}`;
+            const container = document.getElementById('toastContainer');
+            container.appendChild(toast);
+            
+            setTimeout(() => {
+                toast.classList.remove('translate-y-2', 'opacity-0');
+            }, 10);
+
+            setTimeout(() => {
+                toast.classList.add('opacity-0');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+        function openSettingsModal() {
+            document.getElementById('settingsModal').classList.remove('hidden');
+        }
+
+        function closeSettingsModal() {
+            document.getElementById('settingsModal').classList.add('hidden');
+        }
+
+        function updateStatusBadge(text, colorClass) {
+            const badge = document.getElementById('modelStatusBadge');
+            badge.innerText = text;
+            badge.className = `text-[10px] px-2 py-0.5 rounded-full ${colorClass}`;
+        }
+
+        async function loadTeachableModel(url) {
+            updateStatusBadge('모델 로딩 중...', 'bg-blue-500/20 text-blue-400 border border-blue-500/30');
+            try {
+                const modelURL = url.endsWith('/') ? url + "model.json" : url + "/model.json";
+                const metadataURL = url.endsWith('/') ? url + "metadata.json" : url + "/metadata.json";
+                
+                model = await tmImage.load(modelURL, metadataURL);
+                maxPredictions = model.getTotalClasses();
+                updateStatusBadge('AI 모델 준비 완료', 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30');
+                showToast("티처블 머신 모델이 성공적으로 로드되었습니다!", "success");
+            } catch (error) {
+                console.error("Model load error:", error);
+                updateStatusBadge('모델 로드 실패', 'bg-red-500/20 text-red-400 border border-red-500/30');
+                showToast("모델을 불러오는데 실패했습니다. URL을 확인해 주세요.", "error");
+            }
+        }
+
+        function saveAndLoadModel() {
+            const inputUrl = document.getElementById('modelUrlInput').value.trim();
+            if (!inputUrl) {
+                showToast("티처블 머신 URL을 입력해 주세요.", "error");
+                return;
+            }
+            MODEL_URL = inputUrl;
+            localStorage.setItem("tm_mushroom_model_url", MODEL_URL);
+            closeSettingsModal();
+            loadTeachableModel(MODEL_URL);
+        }
+
+        function switchTab(tab) {
+            const uploadBtn = document.getElementById('tabUploadBtn');
+            const webcamBtn = document.getElementById('tabWebcamBtn');
+            const uploadArea = document.getElementById('uploadArea');
+            const webcamArea = document.getElementById('webcamArea');
+
+            if (tab === 'upload') {
+                uploadBtn.className = "flex-1 py-2 rounded-lg bg-slate-800 text-amber-400 transition flex items-center justify-center gap-2";
+                webcamBtn.className = "flex-1 py-2 rounded-lg text-slate-400 hover:text-white transition flex items-center justify-center gap-2";
+                uploadArea.classList.remove('hidden');
+                webcamArea.classList.add('hidden');
+                stopWebcam();
+            } else {
+                webcamBtn.className = "flex-1 py-2 rounded-lg bg-slate-800 text-amber-400 transition flex items-center justify-center gap-2";
+                uploadBtn.className = "flex-1 py-2 rounded-lg text-slate-400 hover:text-white transition flex items-center justify-center gap-2";
+                webcamArea.classList.remove('hidden');
+                uploadArea.classList.add('hidden');
+            }
+        }
+
+        async function handleImageUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function (e) {
+                const img = document.getElementById('previewImage');
+                img.src = e.target.result;
+                img.classList.remove('hidden');
+                document.getElementById('uploadPlaceholder').classList.add('hidden');
+
+                img.onload = async () => {
+                    await predictImage(img);
+                };
+            };
+            reader.readAsDataURL(file);
+        }
+
+        async function setupWebcam() {
+            if (!model) {
+                openSettingsModal();
+                showToast("먼저 티처블 머신 모델 URL을 등록해주세요!", "error");
+                return;
+            }
+
+            const container = document.getElementById('webcamContainer');
+            container.innerHTML = '<p class="text-xs text-amber-400 animate-pulse"><i class="fa-solid fa-spinner fa-spin mr-1"></i> 카메라를 연결하고 있습니다...</p>';
+
+            try {
+                const flip = true;
+                webcam = new tmImage.Webcam(250, 250, flip);
+                await webcam.setup();
+                await webcam.play();
+                isWebcamActive = true;
+
+                container.innerHTML = '';
+                container.appendChild(webcam.canvas);
+                document.getElementById('startCamBtn').innerText = "카메라 중지";
+                document.getElementById('startCamBtn').onclick = stopWebcam;
+                document.getElementById('startCamBtn').className = "mt-3 w-full py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-2";
+
+                window.requestAnimationFrame(webcamLoop);
+            } catch (err) {
+                console.error(err);
+                container.innerHTML = '<p class="text-xs text-red-400">카메라 권한 거부 또는 연결 실패</p>';
+                showToast("카메라에 접근할 수 없습니다.", "error");
+            }
+        }
+
+        async function webcamLoop() {
+            if (isWebcamActive && webcam) {
+                webcam.update();
+                await predictImage(webcam.canvas);
+                window.requestAnimationFrame(webcamLoop);
+            }
+        }
+
+        function stopWebcam() {
+            if (webcam && isWebcamActive) {
+                webcam.stop();
+                isWebcamActive = false;
+                const container = document.getElementById('webcamContainer');
+                container.innerHTML = '<p class="text-slate-500 text-xs">카메라가 중지되었습니다.</p>';
+                const startBtn = document.getElementById('startCamBtn');
+                startBtn.innerText = "카메라 켜기 및 실시간 분석";
+                startBtn.onclick = setupWebcam;
+                startBtn.className = "mt-3 w-full py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl transition flex items-center justify-center gap-2";
+            }
+        }
+
+        async function predictImage(imageElement) {
+            if (!model) {
+                // If model isn't uploaded yet, perform dummy simulation preview for user
+                simulateDemoPrediction();
+                return;
+            }
+
+            const prediction = await model.predict(imageElement);
+            
+            let oysterProb = 0;
+            let moonlightProb = 0;
+
+            for (let i = 0; i < prediction.length; i++) {
+                const className = prediction[i].className.toLowerCase();
+                const prob = prediction[i].probability;
+
+                if (className.includes('느타리') || className.includes('oyster') || className.includes('edible')) {
+                    oysterProb = Math.round(prob * 100);
+                } else if (className.includes('화경') || className.includes('moonlight') || className.includes('toxic') || className.includes('poison')) {
+                    moonlightProb = Math.round(prob * 100);
+                } else {
+                    // Fallback matching index 0 and 1 if class names are standard
+                    if (i === 0) oysterProb = Math.round(prob * 100);
+                    if (i === 1) moonlightProb = Math.round(prob * 100);
+                }
+            }
+
+            renderResults(oysterProb, moonlightProb);
+        }
+
+        // Demo simulation when no model URL is set
+        function simulateDemoPrediction(type = 'random') {
+            let oyster = type === 'oyster' ? 96 : type === 'moonlight' ? 4 : 50;
+            let moonlight = type === 'oyster' ? 4 : type === 'moonlight' ? 96 : 50;
+            renderResults(oyster, moonlight);
+        }
+
+        function loadSample(type) {
+            const previewImage = document.getElementById('previewImage');
+            document.getElementById('uploadPlaceholder').classList.add('hidden');
+            previewImage.classList.remove('hidden');
+
+            if (type === 'oyster') {
+                previewImage.src = 'https://images.unsplash.com/photo-1541544741938-0af808871cc0?w=500&auto=format&fit=crop&q=80';
+                simulateDemoPrediction('oyster');
+            } else {
+                previewImage.src = 'https://images.unsplash.com/photo-1504470695779-75300268aa0e?w=500&auto=format&fit=crop&q=80';
+                simulateDemoPrediction('moonlight');
+            }
+        }
+
+        function renderResults(oysterProb, moonlightProb) {
+            document.getElementById('oysterProbText').innerText = oysterProb + '%';
+            document.getElementById('oysterBar').style.width = oysterProb + '%';
+
+            document.getElementById('moonlightProbText').innerText = moonlightProb + '%';
+            document.getElementById('moonlightBar').style.width = moonlightProb + '%';
+
+            const card = document.getElementById('resultHeaderCard');
+            const icon = document.getElementById('resultIcon');
+            const title = document.getElementById('resultTitle');
+            const subtitle = document.getElementById('resultSubtitle');
+            const noticeBox = document.getElementById('detailNoticeBox');
+            noticeBox.classList.remove('hidden');
+
+            if (moonlightProb >= 60) {
+                // High Danger: 화경버섯
+                card.className = "p-4 rounded-xl bg-red-950/80 border-2 border-red-500 glow-red mb-5 text-center transition-all";
+                icon.className = "text-4xl mb-1 text-red-500 animate-bounce";
+                icon.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i>';
+                title.innerText = "⚠️ 화경버섯 (독버섯) 의심";
+                title.className = "text-lg font-extrabold text-red-400";
+                subtitle.innerText = `화경버섯 확률이 ${moonlightProb}%로 매우 높습니다. 섭취 금지!`;
+
+                noticeBox.innerHTML = `
+                    <div class="text-red-300 space-y-1">
+                        <strong class="font-bold text-red-400 block"><i class="fa-solid fa-ban"></i> 절대 드시지 마십시오!</strong>
+                        <p>화경버섯은 느타리와 흡수하지만 강한 복통, 구토, 환각을 일으키는 맹독성 버섯입니다.</p>
+                        <p class="text-[11px] text-red-400/80 mt-1">💡 단면을 갈랐을 때 자루 밑부분에 검은 반점이 있는지 확인하세요.</p>
+                    </div>
+                `;
+            } else if (oysterProb >= 60) {
+                // Safe: 느타리버섯
+                card.className = "p-4 rounded-xl bg-emerald-950/80 border-2 border-emerald-500 glow-green mb-5 text-center transition-all";
+                icon.className = "text-4xl mb-1 text-emerald-400";
+                icon.innerHTML = '<i class="fa-solid fa-circle-check"></i>';
+                title.innerText = "✅ 느타리버섯 판별";
+                title.className = "text-lg font-extrabold text-emerald-400";
+                subtitle.innerText = `느타리버섯 확률이 ${oysterProb}%입니다.`;
+
+                noticeBox.innerHTML = `
+                    <div class="text-emerald-300 space-y-1">
+                        <strong class="font-bold text-emerald-400 block"><i class="fa-solid fa-shield-halved"></i> 느타리버섯으로 추정됩니다.</strong>
+                        <p>단, 야생에서 직접 채취한 경우 화경버섯과 혼동하기 쉽습니다. 자루 기부 반점 여부를 꼭 교차 확인하세요.</p>
+                    </div>
+                `;
+            } else {
+                // Uncertain / Mixed
+                card.className = "p-4 rounded-xl bg-amber-950/80 border-2 border-amber-500 mb-5 text-center transition-all";
+                icon.className = "text-4xl mb-1 text-amber-400";
+                icon.innerHTML = '<i class="fa-solid fa-circle-question"></i>';
+                title.innerText = "❓ 판별 불가 / 불명확";
+                title.className = "text-lg font-extrabold text-amber-400";
+                subtitle.innerText = "확률이 명확하지 않습니다. 더 선명한 사진을 사용하세요.";
+
+                noticeBox.innerHTML = `
+                    <div class="text-amber-200 space-y-1">
+                        <p>각도가 어둡거나 밝기가 부족할 수 있습니다. 버섯 갓과 자루 부위가 잘 보이도록 찍어주세요.</p>
+                    </div>
+                `;
+            }
+        }
+    </script>
+</body>
+</html>
